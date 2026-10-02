@@ -24,6 +24,18 @@ func (c *Client) setStdinReader(reader io.Reader) {
 	c.stdinReader = reader
 }
 
+// ResolvePhoneNumber returns phoneNumber if non-empty, otherwise the PHONE
+// value from <dataDir>/pin.env. Callers must resolve the phone number this
+// way before constructing a Client so that the key used to load saved
+// cookies matches the key later used to save them.
+func ResolvePhoneNumber(phoneNumber, dataDir string) string {
+	if phoneNumber != "" {
+		return phoneNumber
+	}
+	phone, _ := readCredentialsFromFile(dataDir)
+	return phone
+}
+
 func (c *Client) collectPin(phoneNumber string) (string, string, error) {
 	return collectPinWithReader(bufio.NewReader(c.stdinReader), phoneNumber, c.dataDir)
 }
