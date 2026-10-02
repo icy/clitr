@@ -29,7 +29,7 @@ func TestResumeWebSession_ValidSession(t *testing.T) {
 	require.NoError(t, err)
 	c.setAPIHost(server.URL)
 	c.httpClient.Jar.SetCookies(
-		mustParseURL("https://api.traderepublic.com/api/v1/auth/web"),
+		mustParseURL("https://api.traderepublic.com"),
 		[]*http.Cookie{{Name: "session", Value: "test-session"}},
 	)
 	resumed, err := c.resumeWebSession()
@@ -59,7 +59,7 @@ func TestResumeWebSession_TransientFailureDoesNotClaimInvalid(t *testing.T) {
 	require.NoError(t, err)
 	c.setAPIHost(server.URL)
 	c.httpClient.Jar.SetCookies(
-		mustParseURL("https://api.traderepublic.com/api/v1/auth/web"),
+		mustParseURL("https://api.traderepublic.com"),
 		[]*http.Cookie{{Name: "session", Value: "test-session"}},
 	)
 	resumed, err := c.resumeWebSession()
