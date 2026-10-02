@@ -21,7 +21,7 @@ func (c *Client) AuthenticateClient() error {
 func (c *Client) loginInteractively() error {
 	log.Info("Initiating login")
 	input := bufio.NewReader(c.stdinReader)
-	phoneNo, pin, err := collectPinWithReader(input, c.phoneNo)
+	phoneNo, pin, err := collectPinWithReader(input, c.phoneNo, c.dataDir)
 	if err != nil {
 		return fmt.Errorf("login failed: %w", err)
 	}
