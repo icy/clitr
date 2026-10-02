@@ -29,6 +29,12 @@ func (c *Client) collectPin(phoneNumber string) (string, string, error) {
 }
 
 func collectPinWithReader(reader *bufio.Reader, phoneNumber string, dataDir string) (string, string, error) {
+	filePhone, filePin := readCredentialsFromFile(dataDir)
+	if phoneNumber == "" && filePhone != "" {
+		log.Debug("read phone number from pin.env file")
+		phoneNumber = filePhone
+	}
+
 	if phoneNumber == "" {
 		fmt.Print("Phone number (international format, e.g., +4912345678): ")
 		phoneNoInput, err := reader.ReadString('\n')
@@ -38,9 +44,9 @@ func collectPinWithReader(reader *bufio.Reader, phoneNumber string, dataDir stri
 		phoneNumber = strings.TrimSpace(phoneNoInput)
 	}
 
-	if pin, ok := readPinFromFile(dataDir); ok {
+	if filePin != "" {
 		log.Debug("read PIN from pin.env file")
-		return phoneNumber, pin, nil
+		return phoneNumber, filePin, nil
 	}
 
 	fmt.Print("PIN (4 digits): ")
@@ -51,13 +57,13 @@ func collectPinWithReader(reader *bufio.Reader, phoneNumber string, dataDir stri
 	return phoneNumber, strings.TrimSpace(pinInput), nil
 }
 
-// readPinFromFile reads a PIN from <dataDir>/pin.env, expecting a line like
-// `PIN=1234`. It returns ok=false if the file is missing or has no PIN entry,
+// readCredentialsFromFile reads PHONE and PIN entries from <dataDir>/pin.env
+// (e.g. `PIN=1234` / `PHONE=+4912345678`). Missing entries are returned as "",
 // so the caller can fall back to prompting the user via stdin.
-func readPinFromFile(dataDir string) (string, bool) {
+func readCredentialsFromFile(dataDir string) (phone string, pin string) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", false
+		return "", ""
 	}
 	expandedDir := dataDir
 	if strings.HasPrefix(dataDir, "~/") {
@@ -66,21 +72,24 @@ func readPinFromFile(dataDir string) (string, bool) {
 
 	data, err := os.ReadFile(filepath.Join(expandedDir, pinEnvFileName))
 	if err != nil {
-		return "", false
+		return "", ""
 	}
 
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		key, value, found := strings.Cut(line, "=")
-		if !found || strings.TrimSpace(key) != "PIN" {
+		if !found {
 			continue
 		}
-		pin := strings.Trim(strings.TrimSpace(value), `"'`)
-		if pin != "" {
-			return pin, true
+		value = strings.Trim(strings.TrimSpace(value), `"'`)
+		switch strings.TrimSpace(key) {
+		case "PIN":
+			pin = value
+		case "PHONE":
+			phone = value
 		}
 	}
-	return "", false
+	return phone, pin
 }
 
 // resumeWebSession attempts to resume a session using saved cookies.
