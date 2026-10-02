@@ -32,14 +32,18 @@ type savedCookie struct {
 	SameSite int       `json:"ss,omitempty"`
 }
 
-// ResetCookies removes the saved session from the system keyring.
+// ResetCookies removes the saved session from the system keyring and legacy file.
 func (c *Client) ResetCookies() error {
 	keyringKey := keyringKeyPfx + c.phoneNo
 	if err := keyring.Delete(keyringService, keyringKey); err != nil {
-		if errors.Is(err, keyring.ErrNotFound) {
-			return nil // Nothing to delete
+		if !errors.Is(err, keyring.ErrNotFound) {
+			return fmt.Errorf("failed to delete cookies from keyring: %w", err)
 		}
-		return fmt.Errorf("failed to delete cookies from keyring: %w", err)
+	}
+
+	legacyPath := filepath.Join(c.dataDir, "auth", fmt.Sprintf("cookies.%s.json", c.phoneNo))
+	if err := os.Remove(legacyPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to delete legacy cookie file: %w", err)
 	}
 	return nil
 }
@@ -61,17 +65,34 @@ func (c *Client) SaveCookies() error {
 		return nil
 	}
 
-	encoded, err := encodeCookies(cookies)
+	jsonData, err := marshalCookies(cookies)
+	if err != nil {
+		return err
+	}
+
+	encoded, err := encodeCookies(jsonData)
 	if err != nil {
 		return err
 	}
 	if err := keyring.Set(keyringService, keyringKeyPfx+c.phoneNo, encoded); err != nil {
-		return fmt.Errorf("failed to save cookies to keyring: %w", err)
+		log.Debug("keyring unavailable, falling back to legacy file", zap.Error(err))
+		return c.saveLegacyCookies(jsonData)
 	}
 	return nil
 }
 
-func encodeCookies(cookies []*http.Cookie) (string, error) {
+func (c *Client) saveLegacyCookies(jsonData []byte) error {
+	legacyPath := filepath.Join(c.dataDir, "auth", fmt.Sprintf("cookies.%s.json", c.phoneNo))
+	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o700); err != nil {
+		return fmt.Errorf("failed to create legacy cookie dir: %w", err)
+	}
+	if err := os.WriteFile(legacyPath, jsonData, 0o600); err != nil {
+		return fmt.Errorf("failed to save cookies to legacy file: %w", err)
+	}
+	return nil
+}
+
+func marshalCookies(cookies []*http.Cookie) ([]byte, error) {
 	var cookieList []savedCookie
 	for _, cookie := range cookies {
 		cookieList = append(cookieList, savedCookie{
@@ -88,9 +109,12 @@ func encodeCookies(cookies []*http.Cookie) (string, error) {
 
 	jsonData, err := json.Marshal(cookieList)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal cookies: %w", err)
+		return nil, fmt.Errorf("failed to marshal cookies: %w", err)
 	}
+	return jsonData, nil
+}
 
+func encodeCookies(jsonData []byte) (string, error) {
 	// Compress with gzip to reduce size for keyring storage limits
 	var compressed bytes.Buffer
 	gzWriter := gzip.NewWriter(&compressed)
