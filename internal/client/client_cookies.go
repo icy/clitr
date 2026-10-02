@@ -254,28 +254,26 @@ type jwtClaims struct {
 	Expires  int64 `json:"exp"`
 }
 
-// logJWTExpiry decodes the JWT payload of known session cookies (without
-// verifying the signature) and logs their iat/exp claims at debug level, so
-// expired-session issues can be diagnosed without manually decoding tokens.
+// logJWTExpiry decodes the JWT payload of any cookie whose value looks like
+// a JWT (without verifying the signature) and logs its iat/exp claims at
+// debug level, so expired-session issues can be diagnosed without manually
+// decoding tokens. We don't know Trade Republic's actual session cookie
+// name(s) in advance, so this inspects every cookie rather than matching on
+// a fixed name, and silently skips anything that isn't a 3-part JWT with
+// iat/exp claims instead of logging noise for ordinary cookies.
 func logJWTExpiry(name, value string) {
-	if name != "tr_session" && name != "tr_refresh" {
-		return
-	}
-
 	parts := strings.Split(value, ".")
-	if len(parts) < 2 {
+	if len(parts) != 3 {
 		return
 	}
 
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		log.Debug("failed to decode JWT payload", zap.String("cookie", name), zap.Error(err))
 		return
 	}
 
 	var claims jwtClaims
-	if err := stdjson.Unmarshal(payload, &claims); err != nil {
-		log.Debug("failed to parse JWT claims", zap.String("cookie", name), zap.Error(err))
+	if err := stdjson.Unmarshal(payload, &claims); err != nil || claims.Expires == 0 {
 		return
 	}
 
