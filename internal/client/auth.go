@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/rtfpessoa/clitr/internal/log"
-	"go.uber.org/zap"
 )
 
 const pinEnvFileName = "pin.env"
@@ -105,24 +104,28 @@ func readCredentialsFromFile(dataDir string) (phone string, pin string) {
 }
 
 // resumeWebSession attempts to resume a session using saved cookies.
-func (c *Client) resumeWebSession() bool {
+// The returned error is non-nil only for transient failures (network
+// issues, rate limiting, WAF blocks, etc.) where the saved session is
+// still presumably valid - callers should surface these instead of
+// falling back to a full interactive login, which would both be
+// unnecessary and risk compounding server-side rate limiting.
+func (c *Client) resumeWebSession() (bool, error) {
 	if !c.saveCookies {
-		return false
+		return false, nil
 	}
 
 	parsedURL, _ := url.Parse(cookiesHost)
 	cookies := c.httpClient.Jar.Cookies(parsedURL)
 	if len(cookies) == 0 {
-		return false
+		return false, nil
 	}
 
 	_, err := c.Settings()
 	if err != nil {
 		if errors.Is(err, ErrCookiesReset) {
-			return false
+			return false, nil
 		}
-		log.Error("Failed to get settings", zap.Error(err))
-		return false
+		return false, fmt.Errorf("failed to verify saved session: %w", err)
 	}
-	return true
+	return true, nil
 }

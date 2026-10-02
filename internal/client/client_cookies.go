@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/rtfpessoa/clitr/internal/json"
@@ -239,8 +240,49 @@ func (c *Client) parseCookiesIntoJar(data []byte) error {
 			HttpOnly: sc.HttpOnly,
 			SameSite: http.SameSite(sc.SameSite),
 		})
+		logJWTExpiry(sc.Name, sc.Value)
 	}
 
 	c.httpClient.Jar.SetCookies(parsedURL, cookies)
 	return nil
+}
+
+// jwtClaims holds the subset of claims we care about for debug logging.
+// Unknown fields are ignored (not using the strict internal/json decoder).
+type jwtClaims struct {
+	IssuedAt int64 `json:"iat"`
+	Expires  int64 `json:"exp"`
+}
+
+// logJWTExpiry decodes the JWT payload of known session cookies (without
+// verifying the signature) and logs their iat/exp claims at debug level, so
+// expired-session issues can be diagnosed without manually decoding tokens.
+func logJWTExpiry(name, value string) {
+	if name != "tr_session" && name != "tr_refresh" {
+		return
+	}
+
+	parts := strings.Split(value, ".")
+	if len(parts) < 2 {
+		return
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		log.Debug("failed to decode JWT payload", zap.String("cookie", name), zap.Error(err))
+		return
+	}
+
+	var claims jwtClaims
+	if err := stdjson.Unmarshal(payload, &claims); err != nil {
+		log.Debug("failed to parse JWT claims", zap.String("cookie", name), zap.Error(err))
+		return
+	}
+
+	log.Debug("JWT cookie claims",
+		zap.String("cookie", name),
+		zap.Time("issuedAt", time.Unix(claims.IssuedAt, 0)),
+		zap.Time("expires", time.Unix(claims.Expires, 0)),
+		zap.Duration("ttl", time.Unix(claims.Expires, 0).Sub(time.Unix(claims.IssuedAt, 0))),
+	)
 }

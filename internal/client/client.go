@@ -29,6 +29,7 @@ const (
 
 var (
 	ErrCookiesReset = errors.New("cookies reset")
+	ErrRateLimited  = errors.New("rate limited by Trade Republic")
 )
 
 // closeBody closes an io.ReadCloser, logging any error. Use with defer on response bodies.

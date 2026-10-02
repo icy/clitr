@@ -44,6 +44,14 @@ func (c *Client) refreshWebSession() error {
 	}
 
 	c.webSessionTokenExpires = time.Now().Add(webSessionLifetime)
+
+	// Trade Republic may rotate tr_session/tr_refresh on each refresh. Persist
+	// the updated cookie jar so the next invocation doesn't try to reuse
+	// stale, already-rotated cookies and get forced into a full re-login.
+	if err := c.SaveCookies(); err != nil {
+		log.Warn("failed to persist refreshed session cookies", zap.Error(err))
+	}
+
 	return nil
 }
 
